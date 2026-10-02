@@ -1,0 +1,77 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+#openssl genrsa -out jwt_private.pem 2048
+
+version: '3'
+
+vars:
+  ENV: '{{.ENV | default "local"}}'
+  COMPOSE_FILE: 'docker/{{.ENV}}/docker-compose.yaml'
+  COMPOSE_PROJECT_NAME: 'metrics_{{.ENV}}'
+
+tasks:
+  db-up:
+    desc: Start database
+    cmds:
+      - docker compose -p {{.COMPOSE_PROJECT_NAME}} -f {{.COMPOSE_FILE}} up -d db
+    silent: true
+
+  db-down:
+    desc: Stop the local database container
+    cmds:
+      - docker compose -p {{.COMPOSE_PROJECT_NAME}} -f {{.COMPOSE_FILE}} down db --remove-orphans
+    silent: true
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test ./...
+
+  check:
+    desc: Format check, vet and tests
+    cmds:
+      - gofmt -l internal cmd config
+      - go vet ./...
+      - go test ./...
+
+  migrate:
+    desc: Apply migrations (uses DATABASE_DSN from env/.env)
+    cmds:
+      - go run ./cmd/tenancy migrate
+
+  run:
+    desc: Run the service locally
+    cmds:
+      - go run ./cmd/tenancy
+
+  key:
+    desc: Generate RSA key for access tokens
+    cmds:
+      - openssl genrsa -out jwt_private.pem 2048
+      - chmod 600 jwt_private.pem
+
+  image:
+    desc: Build docker image (VERSION=1.0.0)
+    vars:
+      VERSION: '{{.VERSION | default "dev"}}'
+    cmds:
+      - docker build --build-arg APP_VERSION={{.VERSION}} -t tenancy:{{.VERSION}} .
+
+  deploy-migrate:
+    desc: Run migrations in prod compose (ENV=prod)
+    cmds:
+      - docker compose -p tenancy_{{.ENV}} -f {{.COMPOSE_FILE}} --profile tools run --rm migrate
+
+  deploy-up:
+    desc: Start the service in prod compose (ENV=prod)
+    cmds:
+      - docker compose -p tenancy_{{.ENV}} -f {{.COMPOSE_FILE}} up -d app
+
+  deploy-down:
+    desc: Stop the service in prod compose (ENV=prod)
+    cmds:
+      - docker compose -p tenancy_{{.ENV}} -f {{.COMPOSE_FILE}} down --remove-orphans
+
+  deploy-logs:
+    desc: Tail service logs (ENV=prod)
+    cmds:
+      - docker compose -p tenancy_{{.ENV}} -f {{.COMPOSE_FILE}} logs -f --tail=200 app

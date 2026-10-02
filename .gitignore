@@ -6,11 +6,6 @@
 *.o
 *.a
 
-# Folders
-_obj
-_test
-allure_reports
-
 # Test binary, build with `go test -c`
 *.test
 
